@@ -14,7 +14,7 @@
 require('./lib/config.js')
 var { Boom } = require('@hapi/boom')
 var { baileys, chalk, fs, pino, readline, process, PhoneNumber } = require("./lib/module")
-const { default: makeConnectionShyzu, DisconnectReason, useMultiFileAuthState, makeInMemoryStore, jidDecode, generateForwardMessageContent, proto } = baileys
+const { default: makeConnectionShyzu, DisconnectReason, useMultiFileAuthState, makeInMemoryStore, jidDecode, generateForwardMessageContent, downloadContentFromMessage, generateWAMessageFromContent, proto } = baileys
 const CFonts = require('cfonts');
 
 let useOfPairing = true
@@ -119,17 +119,17 @@ async function whatsappConnect() {
              case 'remove': {
                 var t = shyzu.welcome.replace("user", n.split("@")[0])
                 var t2 = shyzu.leave.replace("user", n.split("@")[0])
-                shyzu.sendMessage(id, { text: (action === 'add' ? t : t2) }, { contextInfo: { mentionedJid: [n], externalAdReply: { title: action === 'add' ? 'Welcome' : 'Goodbye', body: info.wm, thumbnailUrl: ppser, mediaType: 3, renderLargerThumbnail: false }}, mentions: [n] },{})
+                shyzu.sendMessage(id, { text: (action === 'add' ? t : t2) }, { contextInfo: { mentionedJid: [n], externalAdReply: { title: action === 'add' ? 'Welcome' : 'Goodbye', body: "© Created by MannR", thumbnailUrl: ppser, mediaType: 3, renderLargerThumbnail: false }}, mentions: [n] },{})
              }
              break;
              case 'promote': {
                 var u = shyzu.promote.replace("user", n.split("@")[0])
-                shyzu.sendMessage(id, { text: u }, { contextInfo: { mentionedJid: [n], externalAdReply: { title: '', body: info.wm, thumbnailUrl: ppser, mediaType: 3, renderLargerThumbnail: false }}, mentions: [n] },{})
+                shyzu.sendMessage(id, { text: u }, { contextInfo: { mentionedJid: [n], externalAdReply: { title: '', body: "© Created by MannR", thumbnailUrl: ppser, mediaType: 3, renderLargerThumbnail: false }}, mentions: [n] },{})
              }
              break;
              case 'demote': {
                 var x = shyzu.demote.replace("user", n.split("@")[0])
-                shyzu.sendMessage(id, { text: u }, { contextInfo: { mentionedJid: [n], externalAdReply: { title: '', body: info.wm, thumbnailUrl: ppser, mediaType: 3, renderLargerThumbnail: false }}, mentions: [n] },{})
+                shyzu.sendMessage(id, { text: u }, { contextInfo: { mentionedJid: [n], externalAdReply: { title: '', body: "© Created by MannR", thumbnailUrl: ppser, mediaType: 3, renderLargerThumbnail: false }}, mentions: [n] },{})
              }
              break;
             }
@@ -145,7 +145,59 @@ async function whatsappConnect() {
     
     shyzu.ev.on('creds.update', await saveCreds);
     
-    shyzu.sendButton = async (jid, text, btn) => {
+    shyzu.decodeJid = (jid) => {
+    if (!jid) return jid
+    if (/:\d+@/gi.test(jid)) {
+        let decode = jidDecode(jid) || {}
+        return decode.user && decode.server && decode.user + '@' + decode.server || jid
+    } else return jid
+    }
+    
+    shyzu.downloadMediaMessage = async (message) => {
+    let mime = (message.msg || message).mimetype || ''
+    let messageType = message.mtype ? message.mtype.replace(/Message/gi, '') : mime.split('/')[0]
+    const stream = await downloadContentFromMessage(message, messageType)
+    let buffer = Buffer.from([])
+    for await(const chunk of stream) {
+    buffer = Buffer.concat([buffer, chunk])}
+    return buffer
+    }
+    
+    shyzu.copyNForward = async (jid, message, forceForward = false, options = {}) => {
+    let vtype
+    if (options.readViewOnce) {
+        message.message = message.message && message.message.ephemeralMessage && message.message.ephemeralMessage.message ? message.message.ephemeralMessage.message : (message.message || undefined)
+        vtype = Object.keys(message.message.viewOnceMessage.message)[0]
+        delete (message.message && message.message.ignore ? message.message.ignore : (message.message || undefined))
+        delete message.message.viewOnceMessage.message[vtype].viewOnce
+        message.message = {
+            ...message.message.viewOnceMessage.message
+        }
+    }
+    let mtype = Object.keys(message.message)[0]
+    let content = await generateForwardMessageContent(message, forceForward)
+    let ctype = Object.keys(content)[0]
+    let context = {}
+    if (mtype != "conversation") context = message.message[mtype].contextInfo
+    content[ctype].contextInfo = {
+        ...context,
+        ...content[ctype].contextInfo
+    }
+    const waMessage = await generateWAMessageFromContent(jid, content, options ? {
+        ...content[ctype],
+        ...options,
+        ...(options.contextInfo ? {
+            contextInfo: {
+                ...content[ctype].contextInfo,
+                ...options.contextInfo
+            }
+        } : {})
+    } : {})
+    await shyzu.relayMessage(jid, waMessage.message, { messageId:  waMessage.key.id })
+    return waMessage
+    }
+    
+    /** shyzu.sendButton = async (jid, text, btn) => {
     let msg = generateWAMessageFromContent(jid, { viewOnceMessage: {
         message: { 
             "messageContextInfo": { 
@@ -167,7 +219,7 @@ async function whatsappConnect() {
         await shyzu.relayMessage(msg.key.remoteJid, msg.message, { 
         messageId: msg.key.id 
         })
-    }
+    } **/
     
     return shyzu;
 }
