@@ -22,7 +22,7 @@
   },
   "license": "GNU",
   "dependencies": {
-    "@whiskeysockets/baileys": "github:nstar-y/Bail",
+    "@whiskeysockets/baileys": "^6.7.5",
     "async": "^3.2.1",
     "awesome-phonenumber": "^2.66.0",
     "axios": "^0.24.0",
