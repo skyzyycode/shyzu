@@ -14,7 +14,7 @@
 require("./lib/config.js")
 var { axios, JavaScriptObfuscator, fetch, fs, chalk, baileys, execSync, util } = require("./lib/module.js")
 var { watchFile, unwatchFile, readFileSync } = fs
-var { generateWAMessageFromContent, getContentType, proto } = baileys
+var { generateWAMessageContent, generateWAMessageFromContent, getContentType, proto } = baileys
 let cp = execSync
 let { promisify } = util
 let exec = promisify(cp.exec).bind(cp)
@@ -122,8 +122,27 @@ module.exports = async (shyzu, m) => {
     x += chalk.bold.white("." + command + " " + text)
     console.log(x)
     
-    m.reply = (text) => {
-        shyzu.sendMessage(m.key.remoteJid, { text }, { quoted: m });
+    m.reply = async (text) => {
+        let { id, name } = await shyzu.user
+        let z = await shyzu.profilePictureUrl(id, "image")
+        shyzu.sendMessage(m.key.remoteJid, { text: text, contextInfo: {
+        forwardingScore: 0,
+        isForwarded: true,
+        forwardedNewsletterMessageInfo: {
+          newsletterJid: "120363226980141082@newsletter",
+          serverMessageId: 0,
+          newsletterName: "私たちのチャンネルをフォローしてください"
+        },
+        mentionedJid: [m.sender],
+        externalAdReply: {
+        showAdAttribution: true,
+        title: name,
+        body: "© MannR - 2024",
+        thumbnailUrl: z,
+        sourceUrl: "https://whatsapp.com/channel/0029VaGqCO6I1rcjc9hisJ3U",
+        mediaType: 1,
+        renderLargerThumbnail: false
+        }}}, { quoted: m })
     };
     
     m.react = (q) => {
@@ -136,6 +155,30 @@ module.exports = async (shyzu, m) => {
         let m = isNaN(ms) ? '--' : Math.floor(ms / 60000) % 60
         let s = isNaN(ms) ? '--' : Math.floor(ms / 1000) % 60
         return [h, m, s].map(v => v.toString().padStart(2, 0)).join(':')
+    }
+    
+    shyzu.sendButton = async (jid, text, btn) => {
+    let msg = generateWAMessageFromContent(jid, { viewOnceMessage: {
+        message: { 
+            "messageContextInfo": { 
+            "deviceListMetadata": {}, 
+            "deviceListMetadataVersion": 2
+        }, 
+        interactiveMessage: proto.Message.InteractiveMessage.create({
+        contextInfo: { 
+            mentionedJid: [jid] 
+        },
+        body: proto.Message.InteractiveMessage.Body.create({ 
+            text: text
+        }), 
+        nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({ 
+        buttons: btn
+        })
+        })}
+        }}, { userJid: jid, quoted: m })
+        await shyzu.relayMessage(msg.key.remoteJid, msg.message, { 
+        messageId: msg.key.id 
+        })
     }
     
     function format(views) {
@@ -326,12 +369,69 @@ module.exports = async (shyzu, m) => {
         }
         break
         
+        case "getpp": {
+        try {
+        let who
+        if (m.isGroup) who = m.mentionedJid[0] ? m.mentionedJid[0] : m.quoted.sender
+        else who = m.quoted.sender ? m.quoted.sender : m.sender
+        let pp = await shyzu.profilePictureUrl(who, 'image').catch((_) => "https://telegra.ph/file/24fa902ead26340f3df2c.png")
+        shyzu.sendMessage(m.chat, { image: { url: pp }, caption: "Ini dia kak" }, { quoted: m })
+        } catch {
+        let sender = m.sender
+        let pp = await shyzu.profilePictureUrl(sender, 'image').catch((_) => "https://telegra.ph/file/24fa902ead26340f3df2c.png")
+        shyzu.sendMessage(m.chat, { image: { url: pp }, caption: "Ini dia kak" }, { quoted: m })
+        }
+        }
+        break
+        
+        case "toptv": {
+        if (!m.quoted) return m.reply("Balas sebuah video dengan *.toptv*")
+        try {
+        let x = await m.quoted.download()
+        let msg = await generateWAMessageContent({ video: x }, { upload: shyzu.waUploadToServer })
+        await shyzu.relayMessage(m.chat, { ptvMessage: msg.videoMessage }, { quoted: m })
+        } catch ({ message }) {
+        return m.reply(message)
+        }
+        }
+        break
+        
+        case "stc": {
+        if (!text) return m.reply("Masukan teks, Contoh *.stc* kmu knp sih?")
+        try {
+        let data = "https://mxmxk-helper.hf.space/brat?text=" + text
+        shyzu.sendImageAsSticker(m.chat, data, m, { packname: "Created by Shyzu", author: m.pushName })
+        } catch ({ message }) {
+        return m.reply(message)
+        }
+        }
+        break
+        
         case "menu": {
         try {
-        let c = "_Hello i'm Shyzu simple WhatsApp bot created by MannR. I can to do something, search, get data and information only through WhatsApp._\n\n> *(__> ALL CMD <__)*\n> [ • ] .ai\n> [ • ] .clock\n> [ • ] .enc\n> [ • ] .exec\n> [ • ] .menu\n> [ • ] .ngl\n> [ • ] .soundcloud\n> [ • ] .tiktok\n\n_© MannR - 2024_"
-        m.reply(c)
+        let { id, name } = await shyzu.user
+        let c = "_Hello i'm Shyzu simple WhatsApp bot created by MannR. I can to do something, search, get data and information only through WhatsApp._\n\n`失敗がすべての終わりじゃない、立ち直って、人生は一度きり、絶対に諦めない、絶対に諦めない人になろう`\n\n> *(__> ALL CMD <__)*\n> [ • ] .ai\n> [ • ] .clock\n> [ • ] .enc\n> [ • ] .exec\n> [ • ] .getpp\n> [ • ] .menu\n> [ • ] .ngl\n> [ • ] .soundcloud\n> [ • ] .stc\n> [ • ] .tiktok\n> [ • ] .toptv\n\n_© MannR - 2024_"
+        let z = await shyzu.profilePictureUrl(id, "image")
+        shyzu.sendMessage(m.chat, { text: c, contextInfo: {
+        forwardingScore: 0,
+        isForwarded: true,
+        forwardedNewsletterMessageInfo: {
+          newsletterJid: "120363226980141082@newsletter",
+          serverMessageId: 0,
+          newsletterName: "私たちのチャンネルをフォローしてください"
+        },
+        mentionedJid: [m.sender],
+        externalAdReply: {
+        showAdAttribution: true,
+        title: name,
+        body: "© MannR - 2024",
+        thumbnailUrl: z,
+        sourceUrl: "https://whatsapp.com/channel/0029VaGqCO6I1rcjc9hisJ3U",
+        mediaType: 1,
+        renderLargerThumbnail: true
+        }}})
         } catch ({ message }) {
-        m.reply(message)
+        return m.reply(message)
         }
         }
         break
